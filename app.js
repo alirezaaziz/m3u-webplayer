@@ -12,7 +12,7 @@ const ACCENTS=[
 
 let allChannels=[],filtered=[],currentCh=null,currentCat='all',searchQ='',sortMode='custom',gridView=false;
 let hls=null,srcName='',srcUrl=null,dragSrcId=null,ctxCh=null,uiTimer=null;
-let retryTimer=null,retryCount=0,sleepTimerInt=null,sleepEnd=null;
+let retryTimer=null,retryCount=0,sleepTimerInt=null,sleepEnd=null,hlsErrHandled=false;
 let xtVod=false,xtSeries=false;
 let settings={autoPlay:false,rememberVol:true,autoRetry:true,retryDelay:10,showInfo:false,accent:0,vol:1};
 let favorites=new Set(),history=[];
@@ -253,11 +253,13 @@ function playChannel(ch){
   document.querySelectorAll('.speedopt').forEach(o=>o.classList.toggle('on',o.dataset.s==='1'));
   const url=ch.url,isHLS=/\.m3u8|\/live|\/stream|hls|iptv/i.test(url);
   if(Hls.isSupported()&&isHLS){
-    hls=new Hls({enableWorker:true,lowLatencyMode:true,backBufferLength:30});
+    hlsErrHandled=false;
+    hls=new Hls({enableWorker:true,lowLatencyMode:true,backBufferLength:30,
+      fragLoadingMaxRetry:2,manifestLoadingMaxRetry:2,levelLoadingMaxRetry:2});
     hls.loadSource(url);hls.attachMedia(vid);
     hls.on(Hls.Events.MANIFEST_PARSED,()=>{vid.play().catch(()=>{});setBuf(false);});
     hls.on(Hls.Events.LEVEL_UPDATED,()=>updateStreamInfo());
-    hls.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal){setBuf(false);handleStreamErr(hlsMsg(d));}});
+    hls.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal&&!hlsErrHandled){hlsErrHandled=true;setBuf(false);handleStreamErr(hlsMsg(d));}});
   }else if(vid.canPlayType('application/vnd.apple.mpegurl')){
     vid.src=url;vid.play().catch(()=>{});setBuf(false);
   }else{
@@ -439,7 +441,7 @@ function goWelcome(){
   document.getElementById('cpill').classList.remove('show');
 }
 document.getElementById('btn-new').addEventListener('click',goWelcome);
-document.getElementById('tlogo').addEventListener('click',goWelcome);
+// tlogo intentionally has no click action
 
 // Welcome tabs
 document.querySelectorAll('.tbtn').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.tbtn').forEach(b=>b.classList.remove('on'));document.querySelectorAll('.tpanel').forEach(p=>p.classList.remove('on'));btn.classList.add('on');document.getElementById('tab-'+btn.dataset.tab).classList.add('on');}));
@@ -515,6 +517,6 @@ window.addEventListener('online',()=>showToast('✅ Back online'));
   if(cache&&cache.channels&&cache.channels.length){
     srcName=cache.name||'Saved playlist';srcUrl=cache.url||null;
     initApp(cache.channels,srcName,srcUrl,true);
-    if(settings.autoPlay){const lid=stor.get(K.lastCh);if(lid!==null){const ch=cache.channels.find(c=>c.id===lid);if(ch)setTimeout(()=>playChannel(ch),400);}}
+    setTimeout(()=>playChannel(cache.channels[0]),400);
   }
 })();
