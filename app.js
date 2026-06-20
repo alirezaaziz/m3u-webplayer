@@ -257,17 +257,23 @@ function playChannel(ch){
     hls=new Hls({enableWorker:true,lowLatencyMode:true,backBufferLength:30,
       fragLoadingMaxRetry:2,manifestLoadingMaxRetry:2,levelLoadingMaxRetry:2});
     hls.loadSource(url);hls.attachMedia(vid);
-    hls.on(Hls.Events.MANIFEST_PARSED,()=>{vid.play().catch(()=>{});setBuf(false);});
+    hls.on(Hls.Events.MANIFEST_PARSED,()=>{setBuf(false);vid.play().catch(e=>onPlayBlocked(e));});
     hls.on(Hls.Events.LEVEL_UPDATED,()=>updateStreamInfo());
     hls.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal&&!hlsErrHandled){hlsErrHandled=true;setBuf(false);handleStreamErr(hlsMsg(d));}});
   }else if(vid.canPlayType('application/vnd.apple.mpegurl')){
-    vid.src=url;vid.play().catch(()=>{});setBuf(false);
+    vid.src=url;setBuf(false);vid.play().catch(e=>onPlayBlocked(e));
   }else{
-    vid.src=url;vid.play().catch(()=>handleStreamErr('Stream format not supported'));setBuf(false);
+    vid.src=url;setBuf(false);vid.play().catch(e=>{
+      if(e?.name==='NotAllowedError')onPlayBlocked(e);else handleStreamErr('Stream format not supported');
+    });
   }
   scrollIntoSb(ch.id);
 }
 function hlsMsg(d){if(d.type===Hls.ErrorTypes.NETWORK_ERROR)return 'Network error — channel unreachable';if(d.type===Hls.ErrorTypes.MEDIA_ERROR)return 'Media error — unsupported format';return 'Playback error';}
+function onPlayBlocked(e){
+  // Browser autoplay policy rejected play() — show paused state so user can tap to start
+  if(e?.name==='NotAllowedError'){setBuf(false);setPlaySvg(true);vwrap.classList.add('paused','ui-on');clearTimeout(uiTimer);}
+}
 function updateInfoUI(ch){
   ['vt','ib'].forEach(p=>{
     const le=document.getElementById(p+'-logo'),ee=document.getElementById(p+'-em');
