@@ -1,0 +1,26 @@
+{
+  "name": "M3U WebPlayer",
+  "short_name": "M3U Player",
+  "description": "Client-side IPTV & M3U streaming player",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#06060f",
+  "theme_color": "#7c6fff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["entertainment", "utilities"]
+}
