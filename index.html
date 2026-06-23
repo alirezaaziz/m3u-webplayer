@@ -25,6 +25,9 @@
   <div class="ctx-sep"></div>
   <div class="ctxi" id="ctx-copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy Stream URL</div>
   <div class="ctxi" id="ctx-play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9L5 21V3z"/></svg>Play Channel</div>
+  <div class="ctx-sep"></div>
+  <div class="ctxi" id="ctx-hide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>Hide channel</div>
+  <div class="ctxi ctxi-danger" id="ctx-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Remove from list</div>
 </div>
 
 <!-- ── SETTINGS PANEL ────────────────────── -->
@@ -54,9 +57,23 @@
       <div style="margin-top:.85rem"><div class="sp-label" style="margin-bottom:.5rem">Accent color</div><div class="colorpicker" id="colorpicker"></div></div>
     </div>
     <div class="sp-sec">
+      <div class="sp-sec-title">Video Filters</div>
+      <div class="filter-row"><div class="sp-label flab">Brightness</div><input type="range" class="filter-sl" id="f-bright" min="50" max="150" value="100"/><span class="filter-val" id="f-bright-v">100%</span></div>
+      <div class="filter-row"><div class="sp-label flab">Contrast</div><input type="range" class="filter-sl" id="f-contrast" min="50" max="150" value="100"/><span class="filter-val" id="f-contrast-v">100%</span></div>
+      <div class="filter-row"><div class="sp-label flab">Saturation</div><input type="range" class="filter-sl" id="f-sat" min="0" max="200" value="100"/><span class="filter-val" id="f-sat-v">100%</span></div>
+      <button class="plbtn" id="btn-filter-reset" style="margin-top:.65rem;width:100%">↺ Reset filters</button>
+    </div>
+    <div class="sp-sec">
       <div class="sp-sec-title">Playlist</div>
       <div class="plinfo"><div class="plinfo-name" id="sp-plname">—</div><div class="plinfo-meta" id="sp-plmeta">No playlist loaded</div><div class="plbtns"><button class="plbtn" id="sp-btn-new">Load new</button><button class="plbtn danger" id="sp-btn-clear">Clear cache</button></div></div>
       <button class="expbtn" id="sp-btn-export" style="margin-top:.72rem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export current view as M3U</button>
+    </div>
+    <div class="sp-sec">
+      <div class="sp-sec-title">Hidden Channels</div>
+      <div class="sp-row">
+        <div><div class="sp-label" id="hidden-count">No hidden channels</div><div class="sp-sub">Hidden from list · recoverable</div></div>
+        <button class="plbtn" id="btn-unhide-all" style="flex:0 0 auto;white-space:nowrap">Unhide all</button>
+      </div>
     </div>
     <div class="sp-sec">
       <div class="sp-sec-title">Keyboard Shortcuts</div>
@@ -92,7 +109,7 @@
     <!-- Upload -->
     <div class="tpanel on" id="tab-upload">
       <div class="dropzone" id="dz">
-        <input type="file" id="filein" accept=".m3u,.m3u8,text/plain"/>
+        <input type="file" id="filein" accept=".m3u,.m3u8,text/plain" style="display:none"/>
         <div class="dz-icon">📂</div>
         <div class="dz-text">Drop your file here or <strong>click to browse</strong></div>
         <div class="dz-hint">Supports .m3u / .m3u8</div>
@@ -158,6 +175,9 @@
       <div class="sleep-display" id="sleep-display" title="Click to cancel"><span class="sleep-dot"></span><span id="sleep-txt">0:00</span></div>
       <div class="cpill" id="cpill"><span class="cdot"></span>Cached</div>
       <div class="tstat"><b id="stat-n">0</b> ch</div>
+      <button class="ibtn" id="btn-share" title="Share playlist link" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </button>
       <!-- PWA install button (shown when installable) -->
       <button class="ibtn" id="btn-install" title="Install App" style="display:none">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16l-4-4h3V4h2v8h3z"/><path d="M20 18H4v2h16z"/></svg>
@@ -255,6 +275,7 @@
         <div class="ib-logo" id="ib-logo"><span id="ib-em">📺</span></div>
         <div style="min-width:0;flex:1"><div class="ib-name" id="ib-name"></div><div class="ib-grp" id="ib-grp"></div></div>
         <div class="ib-right">
+          <div class="health-dot" id="health-dot" title="Stream health"></div>
           <div class="qbadge" id="qbadge">LIVE</div>
           <button class="navbtn" id="ib-list" title="Channel list" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/></svg></button>
           <button class="navbtn" id="ib-prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg></button>

@@ -1,6 +1,6 @@
 'use strict';
 
-const K={cache:'m3u_cache_v2',sett:'m3u_sett_v2',favs:'m3u_favs_v1',hist:'m3u_hist_v1',lastCh:'m3u_lastch'};
+const K={cache:'m3u_cache_v2',sett:'m3u_sett_v2',favs:'m3u_favs_v1',hist:'m3u_hist_v1',lastCh:'m3u_lastch',hidden:'m3u_hidden_v1'};
 const ACCENTS=[
   {n:'Purple',v:'#7c6fff',d:'rgba(124,111,255,.28)',g:'rgba(124,111,255,.15)'},
   {n:'Blue',v:'#4f9fff',d:'rgba(79,159,255,.28)',g:'rgba(79,159,255,.15)'},
@@ -14,8 +14,9 @@ let allChannels=[],filtered=[],currentCh=null,currentCat='all',searchQ='',sortMo
 let hls=null,srcName='',srcUrl=null,dragSrcId=null,ctxCh=null,uiTimer=null;
 let retryTimer=null,retryCount=0,sleepTimerInt=null,sleepEnd=null,hlsErrHandled=false,ccEnabled=false;
 let xtVod=false,xtSeries=false;
-let settings={autoPlay:false,rememberVol:true,autoRetry:true,retryDelay:10,showInfo:false,accent:0,vol:1};
-let favorites=new Set(),history=[];
+let settings={autoPlay:false,rememberVol:true,autoRetry:true,retryDelay:10,showInfo:false,accent:0,vol:1,filters:{brightness:100,contrast:100,saturation:100}};
+let favorites=new Set(),history=[],hiddenChannels=new Set();
+let bufStartTime=0,totalBufMs=0,totalPlayMs=0,healthInt=null,pendingChName=null;
 
 const stor={
   get:k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}},
@@ -33,6 +34,8 @@ function isFav(ch){return favorites.has(ch.url);}
 function toggleFav(ch){isFav(ch)?favorites.delete(ch.url):favorites.add(ch.url);saveFavs();buildCats();renderChannels();}
 function addHistory(ch){history=[ch.url,...history.filter(u=>u!==ch.url)].slice(0,30);saveHist();}
 function removeHistory(url){history=history.filter(u=>u!==url);saveHist();buildCats();renderChannels();}
+function loadHidden(){const h=stor.get(K.hidden);if(h)hiddenChannels=new Set(h);}
+function saveHidden(){stor.set(K.hidden,[...hiddenChannels]);}
 function saveCache(chs,name,url){stor.set(K.cache,{channels:chs,name,url:url||null,at:Date.now()});}
 function loadCache(){return stor.get(K.cache);}
 function clearCacheData(){[K.cache,K.lastCh].forEach(k=>stor.del(k));}
@@ -132,8 +135,14 @@ function initApp(chs,name,url,fromCache){
   document.getElementById('app').classList.add('visible');
   document.getElementById('stat-n').textContent=chs.length.toLocaleString();
   document.getElementById('cpill').classList.toggle('show',fromCache);
+  document.getElementById('btn-share').style.display=url?'flex':'none';
   updateMobileListBtn();
   updateSpPl();buildCats();renderChannels();
+  if(pendingChName){
+    const ch=chs.find(c=>c.name===pendingChName);
+    if(ch)setTimeout(()=>playChannel(ch),400);
+    pendingChName=null;
+  }
 }
 function updateSpPl(){
   document.getElementById('sp-plname').textContent=srcName||'Unnamed playlist';
@@ -167,6 +176,7 @@ function renderChannels(){
     const catOk=currentCat==='all'?true:currentCat==='favs'?isFav(c):c.group===currentCat;
     return catOk&&(!q||c.name.toLowerCase().includes(q)||c.group.toLowerCase().includes(q));
   });
+  arr=arr.filter(c=>!hiddenChannels.has(c.url));
   if(sortMode==='az')arr=[...arr].sort((a,b)=>a.name.localeCompare(b.name));
   else if(sortMode==='za')arr=[...arr].sort((a,b)=>b.name.localeCompare(a.name));
   else if(sortMode==='group')arr=[...arr].sort((a,b)=>a.group.localeCompare(b.group)||a.name.localeCompare(b.name));
@@ -224,6 +234,17 @@ document.getElementById('ctx-top').addEventListener('click',()=>{if(!ctxCh)retur
 document.getElementById('ctx-history').addEventListener('click',()=>{if(ctxCh)removeHistory(ctxCh.url);closeCtx();});
 document.getElementById('ctx-copy').addEventListener('click',()=>{if(ctxCh)navigator.clipboard.writeText(ctxCh.url).catch(()=>{});closeCtx();});
 document.getElementById('ctx-play').addEventListener('click',()=>{if(ctxCh)playChannel(ctxCh);closeCtx();});
+document.getElementById('ctx-hide').addEventListener('click',()=>{
+  if(!ctxCh)return;
+  hiddenChannels.add(ctxCh.url);saveHidden();buildCats();renderChannels();closeCtx();
+  showToast('Channel hidden — unhide in Settings.');
+});
+document.getElementById('ctx-delete').addEventListener('click',()=>{
+  if(!ctxCh)return;
+  allChannels=allChannels.filter(c=>c.id!==ctxCh.id);
+  saveCache(allChannels,srcName,srcUrl);buildCats();renderChannels();closeCtx();
+  showToast('Channel removed from list.');
+});
 function closeCtx(){document.getElementById('ctx').classList.remove('open');ctxCh=null;}
 
 // ── Sort ────────────────────────────────────
@@ -255,6 +276,11 @@ function playChannel(ch){
   document.getElementById('qualitymenu').innerHTML='';
   document.getElementById('qualitymenu').classList.remove('open');
   document.getElementById('pbuf').style.width='0';
+  // reset health indicator
+  clearInterval(healthInt);healthInt=null;
+  if(bufStartTime){totalBufMs+=Date.now()-bufStartTime;bufStartTime=0;}
+  totalBufMs=0;totalPlayMs=0;
+  const hd=document.getElementById('health-dot');hd.className='health-dot';hd.style.display='none';
   if(hls){hls.destroy();hls=null;}
   const vid=document.getElementById('vid');
   vid.pause();vid.src='';vid.playbackRate=1;
@@ -493,7 +519,7 @@ function scrollIntoSb(id){const el=document.querySelector(`.chi[data-id="${id}"]
 document.getElementById('btn-settings').addEventListener('click',openSP);
 document.getElementById('sp-close').addEventListener('click',closeSP);
 document.getElementById('spback').addEventListener('click',closeSP);
-function openSP(){document.getElementById('spback').classList.add('open');document.getElementById('sp').classList.add('open');syncToggles();updateSpPl();}
+function openSP(){document.getElementById('spback').classList.add('open');document.getElementById('sp').classList.add('open');syncToggles();updateSpPl();updateHiddenCount();applyFilters();}
 function closeSP(){document.getElementById('spback').classList.remove('open');document.getElementById('sp').classList.remove('open');}
 function syncToggles(){document.querySelectorAll('.toggle[data-key]').forEach(t=>t.classList.toggle('on',!!settings[t.dataset.key]));document.getElementById('retry-delay-row').style.display=settings.autoRetry?'flex':'none';document.getElementById('retry-delay-sel').value=settings.retryDelay;}
 document.querySelectorAll('.toggle[data-key]').forEach(tog=>{tog.addEventListener('click',()=>{const k=tog.dataset.key;settings[k]=!settings[k];tog.classList.toggle('on',settings[k]);if(k==='autoRetry')document.getElementById('retry-delay-row').style.display=settings.autoRetry?'flex':'none';if(k==='showInfo')applyShowInfo(settings.showInfo);if(k==='rememberVol'&&settings.rememberVol)settings.vol=vid.volume;saveSett();});});
@@ -502,11 +528,47 @@ document.querySelectorAll('.sleep-preset').forEach(btn=>btn.addEventListener('cl
 document.getElementById('sp-btn-new').addEventListener('click',()=>{closeSP();goWelcome();});
 document.getElementById('sp-btn-clear').addEventListener('click',()=>{clearCacheData();document.getElementById('cpill').classList.remove('show');closeSP();updateSpPl();});
 document.getElementById('sp-btn-export').addEventListener('click',()=>{if(!filtered.length)return;const lines=['#EXTM3U'];filtered.forEach(ch=>{lines.push(`#EXTINF:${ch.duration}${ch.logo?` tvg-logo="${ch.logo}"`:''}${ch.group?` group-title="${ch.group}"`:''},${ch.name}`);lines.push(ch.url);});const blob=new Blob([lines.join('\n')],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(srcName||'playlist').replace(/[^a-z0-9]/gi,'_')+'_export.m3u';a.click();});
+document.getElementById('btn-unhide-all').addEventListener('click',()=>{hiddenChannels.clear();saveHidden();buildCats();renderChannels();updateHiddenCount();showToast('All channels unhidden.');});
+document.getElementById('btn-share').addEventListener('click',()=>{
+  if(!srcUrl)return;
+  const u=new URL(location.href);
+  u.search='?playlist='+encodeURIComponent(srcUrl)+(currentCh?'&ch='+encodeURIComponent(currentCh.name):'');
+  navigator.clipboard.writeText(u.toString()).then(()=>showToast('🔗 Link copied to clipboard!')).catch(()=>showToast('Could not copy — check browser permissions.'));
+});
 
 // Color accent
 const cpEl=document.getElementById('colorpicker');
 ACCENTS.forEach((a,i)=>{const d=document.createElement('div');d.className='cdot2'+(i===settings.accent?' on':'');d.style.background=a.v;d.title=a.n;d.addEventListener('click',()=>{settings.accent=i;saveSett();document.querySelectorAll('.cdot2').forEach((x,j)=>x.classList.toggle('on',j===i));applyAccent(i);});cpEl.appendChild(d);});
 function applyAccent(i){const a=ACCENTS[i];document.documentElement.style.setProperty('--P',a.v);document.documentElement.style.setProperty('--Pd',a.d);document.documentElement.style.setProperty('--Pg',a.g);}
+function applyFilters(){
+  const f=settings.filters||{brightness:100,contrast:100,saturation:100};
+  const vid=document.getElementById('vid');
+  vid.style.filter=(f.brightness===100&&f.contrast===100&&f.saturation===100)?'':
+    `brightness(${f.brightness}%) contrast(${f.contrast}%) saturate(${f.saturation}%)`;
+  const set=(id,vid2,v)=>{const e=document.getElementById(id);if(e)e.value=v;const v2=document.getElementById(vid2);if(v2)v2.textContent=v+'%';};
+  set('f-bright','f-bright-v',f.brightness);set('f-contrast','f-contrast-v',f.contrast);set('f-sat','f-sat-v',f.saturation);
+}
+function setupFilters(){
+  const vid=document.getElementById('vid');
+  const mkH=(id,valId,key)=>{
+    const sl=document.getElementById(id);
+    sl.addEventListener('input',()=>{
+      if(!settings.filters)settings.filters={brightness:100,contrast:100,saturation:100};
+      settings.filters[key]=parseInt(sl.value);
+      document.getElementById(valId).textContent=sl.value+'%';
+      vid.style.filter=`brightness(${settings.filters.brightness}%) contrast(${settings.filters.contrast}%) saturate(${settings.filters.saturation}%)`;
+      saveSett();
+    });
+  };
+  mkH('f-bright','f-bright-v','brightness');mkH('f-contrast','f-contrast-v','contrast');mkH('f-sat','f-sat-v','saturation');
+  document.getElementById('btn-filter-reset').addEventListener('click',()=>{
+    settings.filters={brightness:100,contrast:100,saturation:100};saveSett();applyFilters();
+  });
+}
+function updateHiddenCount(){
+  const n=hiddenChannels.size;
+  document.getElementById('hidden-count').textContent=n===0?'No hidden channels':`${n} channel${n===1?'':'s'} hidden`;
+}
 
 // ── Xtream Codes ────────────────────────────
 document.getElementById('xt-tog-vod').addEventListener('click',()=>{xtVod=!xtVod;document.getElementById('xt-tog-vod').classList.toggle('on',xtVod);});
@@ -532,6 +594,7 @@ function goWelcome(){
   document.getElementById('sinput').value='';document.getElementById('urlin').value='';
   document.getElementById('url-err').style.display='none';
   document.getElementById('app').classList.remove('visible');
+  document.getElementById('btn-share').style.display='none';
   document.getElementById('welcome').style.display='flex';
   document.getElementById('player').classList.remove('on');
   document.getElementById('empty').style.display='flex';
@@ -544,6 +607,7 @@ document.getElementById('btn-new').addEventListener('click',goWelcome);
 document.querySelectorAll('.tbtn').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.tbtn').forEach(b=>b.classList.remove('on'));document.querySelectorAll('.tpanel').forEach(p=>p.classList.remove('on'));btn.classList.add('on');document.getElementById('tab-'+btn.dataset.tab).classList.add('on');}));
 document.getElementById('filein').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>loadFromText(ev.target.result,f.name,null);r.readAsText(f,'utf-8');});
 const dz=document.getElementById('dz');
+dz.addEventListener('click',()=>document.getElementById('filein').click());
 dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
 dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
 dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');const f=e.dataTransfer.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>loadFromText(ev.target.result,f.name,null);r.readAsText(f,'utf-8');});
@@ -595,6 +659,29 @@ document.getElementById('btn-install').addEventListener('click',async()=>{
   document.getElementById('btn-install').style.display='none';
 });
 
+// ── Stream health tracking ───────────────────
+function updateHealth(){
+  const total=totalBufMs+totalPlayMs;
+  if(total<4000)return;
+  const ratio=totalBufMs/total;
+  const dot=document.getElementById('health-dot');
+  dot.style.display='block';dot.classList.add('show');
+  dot.className='health-dot show '+(ratio>0.1?'bad':ratio>0.03?'warn':'good');
+  dot.title=`Stream health ${Math.round((1-ratio)*100)}%`;
+}
+(()=>{
+  const vid=document.getElementById('vid');
+  vid.addEventListener('waiting',()=>{if(!bufStartTime)bufStartTime=Date.now();});
+  vid.addEventListener('playing',()=>{
+    if(bufStartTime){totalBufMs+=Date.now()-bufStartTime;bufStartTime=0;}
+    if(!healthInt)healthInt=setInterval(()=>{totalPlayMs+=1000;updateHealth();},1000);
+  });
+  vid.addEventListener('pause',()=>{
+    clearInterval(healthInt);healthInt=null;
+    if(bufStartTime){totalBufMs+=Date.now()-bufStartTime;bufStartTime=0;}
+  });
+})();
+
 // ── Online / offline indicator ───────────────
 function showToast(msg,ms=3000){
   const t=document.getElementById('pwa-toast');
@@ -606,11 +693,15 @@ window.addEventListener('online',()=>showToast('✅ Back online'));
 
 // ── Boot ─────────────────────────────────────
 (function boot(){
-  loadSett();loadFavs();loadHist();
-  applyAccent(settings.accent);
+  loadSett();loadFavs();loadHist();loadHidden();
+  applyAccent(settings.accent);applyFilters();setupFilters();
   if(settings.rememberVol&&settings.vol!==undefined){vid.volume=settings.vol;document.getElementById('vol').value=settings.vol;updateVolSvg();}
   if(settings.showInfo)applyShowInfo(true);
   updateMobileListBtn();
+  // shared playlist via URL params
+  const params=new URLSearchParams(location.search);
+  const sharedPl=params.get('playlist');
+  if(sharedPl){pendingChName=params.get('ch')||null;loadFromUrl(sharedPl);return;}
   const cache=loadCache();
   if(cache&&cache.channels&&cache.channels.length){
     srcName=cache.name||'Saved playlist';srcUrl=cache.url||null;
